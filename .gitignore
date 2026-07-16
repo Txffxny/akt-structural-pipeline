@@ -1,0 +1,11 @@
+# Generated data -- regenerate via 01/02/03/04 scripts, don't commit
+data/
+
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# OS/editor cruft
+.DS_Store
+.vscode/
