@@ -57,3 +57,36 @@ allosteric drugs, and worth highlighting on the eventual structure figure.
   that fetch needs to happen from your own machine.
 - If you later add AKT3 to the mutagenesis plan, just add `"AKT3"` to
   `ISOFORMS_TO_MUTATE` in script 02.
+
+  ## WT vs W80A structural comparison (script 06)
+
+Compared ColabFold-predicted WT and W80A models for both AKT1 and AKT2,
+using two separate domain-restricted superpositions (PH domain, kinase
+domain) rather than one whole-chain alignment -- necessary because PAE
+plots showed AlphaFold is confident about each domain's internal fold
+but not their relative orientation, so a whole-chain alignment would
+let that interdomain uncertainty contaminate the pocket-residue RMSD.
+
+Comparisons are model-matched (same underlying AlphaFold model number
+used for WT and W80A), not rank-matched -- an initial rank_001-vs-
+rank_001 comparison for AKT2 silently compared two different underlying
+models (model_4 vs model_3), inflating the apparent baseline RMSD
+roughly 6-fold (6.933 A vs the corrected 1.211 A). Always verify the
+model number, not just the rank, before trusting a ColabFold structural
+comparison.
+
+**Result:** in all four comparisons (AKT1 PH domain, AKT1 kinase domain,
+AKT2 PH domain, AKT2 kinase domain), the pocket-residue RMSD was equal
+to or lower than that domain's own baseline RMSD -- i.e. AlphaFold's
+static single-state prediction does not show a detectable localized
+structural perturbation at the pocket residues (including residue 80
+itself) as a result of the W80A mutation, in either isoform.
+
+This is a legitimate negative result, not a failed experiment: it's
+consistent with Trp80's proposed role being about stabilizing a specific
+*conformation* (the closed, inhibitor-competent PH-in state) via a
+stacking interaction with the inhibitor, rather than being a rigid
+structural scaffold residue whose loss should visibly deform the fold.
+A static AlphaFold prediction cannot resolve a conformational-
+equilibrium-shifting mutation -- only real drug-response data (the
+4-drug panel) can actually test that mechanism.
