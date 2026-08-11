@@ -90,3 +90,31 @@ structural scaffold residue whose loss should visibly deform the fold.
 A static AlphaFold prediction cannot resolve a conformational-
 equilibrium-shifting mutation -- only real drug-response data (the
 4-drug panel) can actually test that mechanism.
+
+## AF3 validation against real crystal structures (script 08)
+
+Compared AF3-predicted WT and W80A structures (with real ligands: 
+Inhibitor VIII, Miransertib) directly against their real crystal 
+structures (3O96, 5KCV), using kinase-domain-anchored superposition.
+
+**WT validation:** AF3 accurately reconstructs the true ligand-induced
+closed PH-in conformation for both ligands -- PH-domain RMSD 1.9-2.4 A,
+ligand centroid within ~0.6-0.85 A of the real crystallographic position.
+This confirms AF3's high confidence scores (ipTM 0.96-0.97) reflect 
+genuinely correct structures, not just self-consistent guessing.
+
+**W80A comparison:** no consistent structural signal. Inhibitor VIII 
+showed a small shift toward worse agreement with ground truth (PH-domain 
+RMSD 1.875->2.010 A); Miransertib showed the opposite direction (2.444->
+2.371 A). Both shifts are within the range expected from single-seed 
+prediction noise, and the sign reversal between ligands indicates this 
+is not a real, reproducible signal.
+
+**Conclusion:** consistent with the earlier AF2 apo-structure null result.
+AF3, despite accurately reproducing the correct WT-bound conformation, 
+does not detect a structural effect of W80A. This supports a thermodynamic/
+population-shift mechanism for Trp80 (affecting whether the closed state 
+is favorable) rather than a geometric one -- exactly the kind of effect a 
+static structure prediction isn't built to capture, regardless of accuracy.
+This motivates relying on the wet-lab drug panel, not structure prediction 
+alone, to resolve the mutation's functional effect.
