@@ -38,7 +38,15 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 LIGANDS = {
     "InhibitorVIII": {
-        "smiles": "O=C2Nc1ccccc1N2C8CCN(Cc7ccc(c4nc6c(nc4c3ccccc3)cc5ncnc5c6)cc7)CC8",
+        # NOTE: an earlier version of this SMILES (ACDLabs-style, no explicit
+        # [nH]) matched RCSB's own listed string character-for-character but
+        # still failed to parse in RDKit/AF3 -- that fused imidazo-quinoxaline
+        # ring system needs one nitrogen explicitly marked [nH] for RDKit's
+        # aromaticity perception to resolve it. This is RCSB's own CACTVS
+        # "Canonical SMILES" for ligand IQO, which includes that marking and
+        # is confirmed to represent the identical molecule (same InChIKey:
+        # BIWGYFZAEWGBAL-UHFFFAOYSA-N).
+        "smiles": "O=C1Nc2ccccc2N1C3CCN(CC3)Cc4ccc(cc4)c5nc6cc7[nH]cnc7cc6nc5c8ccccc8",
         "class": "allosteric",
         "ground_truth_pdb": "3O96",
     },
