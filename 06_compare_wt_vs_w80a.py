@@ -4,38 +4,37 @@
 Compares each isoform's WT vs W80A ColabFold models by superimposing
 them and computing RMSD at the MK-2206/miransertib pocket residues.
 
+FIX -- separate output files, not one combined file: an earlier version
+wrote WT and W80A into a single PDB file with a manually-inserted
+ENDMDL line between them, but no matching MODEL header lines wrapping
+each structure. That's a malformed multi-model PDB -- PyMOL split it
+into two objects based on the stray ENDMDL, but the second object's
+atoms weren't parsed correctly as a result (confirmed: coloring it
+reported no atom count, unlike the first object's clean "3918 atoms").
+This version writes WT and W80A as two separate, independently valid
+PDB files instead -- load both with separate `load` commands in PyMOL/
+ChimeraX rather than expecting one file to contain both.
+
 FIX -- model-matched comparison, not rank-matched: ColabFold runs 5
-separately-trained AlphaFold model weights (model_1 through model_5)
-and ranks the 5 outputs by pLDDT. "rank_001" means "whichever model
-scored best in THIS run" -- it does NOT guarantee the same underlying
-model was used for both the WT and W80A runs. An earlier version of
-this script compared rank_001-to-rank_001, which for AKT1 happened to
-both be model_1 (a fair comparison) but for AKT2 was model_4 (WT) vs
-model_3 (W80A) -- two different neural networks, making any RMSD
-difference potentially just reflect model-to-model variation rather
-than anything about the mutation. This version instead finds whichever
-model NUMBER is present in both the WT and W80A result sets and uses
-that pair, falling back to the lowest model number common to both if
-multiple are shared, and refusing to proceed with a warning if no model
-number is shared between the two runs at all.
+separately-trained AlphaFold model weights and ranks by pLDDT.
+"rank_001" doesn't guarantee the same underlying model was used for
+both WT and W80A runs -- this version finds whichever model NUMBER is
+shared between the two result sets and uses that pair.
 
-CRITICAL DESIGN POINT -- two separate superpositions, not one:
-The PAE plots showed AlphaFold is confident about each domain's internal
-fold (PH domain ~1-130, kinase+regulatory domain ~130-480) but NOT
-confident about their relative orientation. Pocket residues split across
-both domains -- residue 80 itself is in the PH domain. This script runs
-TWO independent superpositions (PH domain block, kinase domain block)
-rather than one, so the untrustworthy interdomain orientation never
-contaminates the residue-80 comparison.
+CRITICAL DESIGN POINT -- two separate superpositions, not one: aligns
+on the PH domain block (1-130) and kinase domain block (130-480)
+independently, since PAE plots showed their relative orientation isn't
+trustworthy -- mixing them would contaminate the residue-80 comparison
+with that interdomain uncertainty.
 
-AKT2 pocket residue numbering caveat: AKT2 is 481 aa vs AKT1's 480 aa,
-so pocket residue numbers don't line up 1:1 with AKT1 by simple
-position. This script does a live pairwise alignment against AKT1 to
-map pocket positions correctly for AKT2.
+AKT2 pocket residue numbering caveat: live pairwise alignment against
+AKT1 maps pocket positions correctly (AKT2 is 481 aa vs AKT1's 480 aa).
 
-Output:
-  - data/structural_comparison/<isoform>_PH_domain_aligned.pdb
-  - data/structural_comparison/<isoform>_kinase_domain_aligned.pdb
+Output (per isoform):
+  - data/structural_comparison/<isoform>_PH_domain_WT.pdb
+  - data/structural_comparison/<isoform>_PH_domain_W80A.pdb
+  - data/structural_comparison/<isoform>_kinase_domain_WT.pdb
+  - data/structural_comparison/<isoform>_kinase_domain_W80A.pdb
   - data/structural_comparison/rmsd_summary.csv
 """
 
@@ -88,14 +87,12 @@ def find_matched_pair(isoform: str):
     if not shared:
         raise ValueError(
             f"{isoform}: no model number is shared between WT {sorted(wt_models)} "
-            f"and W80A {sorted(w80a_models)} -- cannot do an apples-to-apples "
-            f"comparison. Consider re-running ColabFold with more seeds/models "
-            f"saved, or manually picking two runs known to use the same weights."
+            f"and W80A {sorted(w80a_models)} -- cannot do an apples-to-apples comparison."
         )
     chosen = shared[0]
     if len(shared) > 1:
-        print(f"  Note: models {shared} are shared between WT and W80A for {isoform}; "
-              f"using model_{chosen} (lowest shared number) for consistency.")
+        print(f"  Note: models {shared} shared between WT and W80A for {isoform}; "
+              f"using model_{chosen} (lowest shared number).")
     return wt_models[chosen], w80a_models[chosen], chosen
 
 
@@ -155,7 +152,14 @@ def compute_rmsd(coords_a: dict, coords_b: dict, residue_numbers):
     return rmsd, len(ca)
 
 
-def superimpose_on_region(wt_path, w80a_path, region_start, region_end, out_path):
+def save_structure(structure, out_path):
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(out_path)
+
+
+def superimpose_on_region(wt_path, w80a_path, region_start, region_end,
+                           wt_out_path, w80a_out_path):
     parser = PDBParser(QUIET=True)
     wt_structure = parser.get_structure("WT", wt_path)
     w80a_structure = parser.get_structure("W80A", w80a_path)
@@ -187,13 +191,8 @@ def superimpose_on_region(wt_path, w80a_path, region_start, region_end, out_path
     wt_coords = {r: a.get_coord() for r, a in wt_all.items()}
     w80a_coords = {r: a.get_coord() for r, a in w80a_all_transformed.items()}
 
-    io = PDBIO()
-    with open(out_path, "w") as fh:
-        io.set_structure(wt_structure)
-        io.save(fh)
-        fh.write("ENDMDL\n")
-        io.set_structure(w80a_structure)
-        io.save(fh)
+    save_structure(wt_structure, wt_out_path)
+    save_structure(w80a_structure, w80a_out_path)
 
     return wt_coords, w80a_coords, region_baseline_rmsd, len(fit_resnums)
 
@@ -208,7 +207,7 @@ def main():
         print(f"\n{'='*60}\n{isoform}\n{'='*60}")
 
         wt_path, w80a_path, model_used = find_matched_pair(isoform)
-        print(f"  Using model_{model_used} for BOTH WT and W80A (model-matched, not rank-matched):")
+        print(f"  Using model_{model_used} for BOTH WT and W80A (model-matched):")
         print(f"  WT:   {wt_path}")
         print(f"  W80A: {w80a_path}")
 
@@ -223,9 +222,10 @@ def main():
             print(f"  AKT2-mapped PH pocket residues: {ph_pocket}")
             print(f"  AKT2-mapped kinase pocket residues: {kinase_pocket}")
 
-        ph_out = os.path.join(OUT_DIR, f"{isoform}_PH_domain_aligned.pdb")
+        ph_wt_out = os.path.join(OUT_DIR, f"{isoform}_PH_domain_WT.pdb")
+        ph_w80a_out = os.path.join(OUT_DIR, f"{isoform}_PH_domain_W80A.pdb")
         wt_c, w80a_c, ph_baseline_rmsd, n_ph_fit = superimpose_on_region(
-            wt_path, w80a_path, *PH_DOMAIN_REGION, ph_out
+            wt_path, w80a_path, *PH_DOMAIN_REGION, ph_wt_out, ph_w80a_out
         )
         print(f"\n  [PH domain alignment] baseline RMSD over {n_ph_fit} fitted residues: "
               f"{ph_baseline_rmsd:.3f} A")
@@ -234,11 +234,13 @@ def main():
             print(f"  [PH domain alignment] pocket-residue RMSD "
                   f"(residues {ph_pocket}, includes mutation site): "
                   f"{ph_pocket_rmsd:.3f} A over {n_ph_pocket} residues")
-        print(f"  Saved: {ph_out}")
+        print(f"  Saved: {ph_wt_out}")
+        print(f"  Saved: {ph_w80a_out}")
 
-        kinase_out = os.path.join(OUT_DIR, f"{isoform}_kinase_domain_aligned.pdb")
+        kinase_wt_out = os.path.join(OUT_DIR, f"{isoform}_kinase_domain_WT.pdb")
+        kinase_w80a_out = os.path.join(OUT_DIR, f"{isoform}_kinase_domain_W80A.pdb")
         wt_c2, w80a_c2, kinase_baseline_rmsd, n_kinase_fit = superimpose_on_region(
-            wt_path, w80a_path, *KINASE_DOMAIN_REGION, kinase_out
+            wt_path, w80a_path, *KINASE_DOMAIN_REGION, kinase_wt_out, kinase_w80a_out
         )
         print(f"\n  [Kinase domain alignment] baseline RMSD over {n_kinase_fit} fitted residues: "
               f"{kinase_baseline_rmsd:.3f} A")
@@ -247,7 +249,8 @@ def main():
             print(f"  [Kinase domain alignment] pocket-residue RMSD "
                   f"(residues {kinase_pocket}): "
                   f"{kinase_pocket_rmsd:.3f} A over {n_kinase_pocket} residues")
-        print(f"  Saved: {kinase_out}")
+        print(f"  Saved: {kinase_wt_out}")
+        print(f"  Saved: {kinase_w80a_out}")
 
         summary_rows.append({
             "isoform": isoform,
@@ -268,19 +271,12 @@ def main():
 
     print(f"\n\nSaved summary: {summary_path}")
     print(
-        "\nHow to read this:\n"
-        "  - Both WT and W80A now come from the SAME underlying AlphaFold model "
-        "number for each isoform -- any RMSD difference reflects the mutation, "
-        "not which of the 5 trained models happened to rank best.\n"
-        "  - The 'baseline' RMSD for each domain is the fit quality of the "
-        "superposition itself.\n"
-        "  - The PH-domain pocket RMSD is most directly relevant to the mutation, "
-        "since it includes residue 80 itself.\n"
-        "  - If either pocket RMSD is noticeably larger than its own domain's "
-        "baseline, that's a real local structural signal from the mutation. If "
-        "similar to or below baseline, AlphaFold isn't picking up a strong local "
-        "change -- plausible for a static prediction and a conformational-"
-        "equilibrium-shifting mutation."
+        "\nTo view in PyMOL, load the WT and W80A files for a given domain "
+        "as two SEPARATE load commands, e.g.:\n"
+        "  load .../AKT1_PH_domain_WT.pdb\n"
+        "  load .../AKT1_PH_domain_W80A.pdb\n"
+        "then color/select as before -- no split_states needed, each file "
+        "is already a single clean object."
     )
 
 
